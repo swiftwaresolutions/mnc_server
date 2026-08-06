@@ -1046,5 +1046,42 @@ public class ClinicalInformationController {
         return this.clinicalInfoWritePlatformService.reOpenDoctorTransfer(transferId,appUser.getUser().getDoctor_id());
     }
 
+    @GetMapping("/fetchDocPatientList/{toDoc}")
+    public List<DocPatientListData> fetchDocPatientList(@PathVariable("toDoc") Long toDoc) {
+        return this.clinicalInfoReadPlatformService.fetchDocPatientList(toDoc);
+    }
+
+    @GetMapping("/fetchDocPatientListByDate/{toDoc}/{date}")
+    public List<DocPatientListData> fetchDocPatientListByDate(@PathVariable("toDoc") Long toDoc,
+                                                               @PathVariable("date") String date) {
+        return this.clinicalInfoReadPlatformService.fetchDocPatientListByDate(toDoc, date);
+    }
+
+    @GetMapping("/fetchDocStatus/{doctor_id}")
+    public DoctorScheduleStatusData fetchDocStatus(@PathVariable("doctor_id") Long doctorId) {
+        log.debug("REST request to fetchDocStatus doctorId {}", doctorId);
+        return this.clinicalInfoReadPlatformService.fetchDocStatus(doctorId);
+    }
+
+    @RequestMapping(value = "/updateDocStatus/{doctor_id}/{status}",
+                    method = {RequestMethod.PUT, RequestMethod.POST})
+    public Response updateDocStatus(@PathVariable("doctor_id") Long doctorId,
+                                    @PathVariable("status") String status) {
+        log.debug("REST request to updateDocStatus doctorId {} status {}", doctorId, status);
+        return this.clinicalInfoWritePlatformService.updateDocStatus(doctorId, status);
+    }
+
+    @PutMapping("/updateDoctorViewing/{patId}/{vstId}")
+    public Response updateDoctorViewing(@PathVariable("patId") Long patId,
+                                        @PathVariable("vstId") Long vstId) {
+        final AppUser appUser = this.platformSecurityContext.authenticateUser();
+        if (appUser.getUser().getIsDoctor() != 1) {
+            throw new HimsApplicationContextException("Access Only For Doctors !");
+        }
+        log.debug("REST request to updateDoctorViewing patId={} vstId={}", patId, vstId);
+        return this.clinicalInfoWritePlatformService.updateDoctorViewing(
+                patId, vstId, appUser.getUser().getDoctor_id());
+    }
+
 }
 

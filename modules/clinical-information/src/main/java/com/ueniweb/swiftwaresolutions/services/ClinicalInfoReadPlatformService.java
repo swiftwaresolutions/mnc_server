@@ -4,6 +4,7 @@ package com.ueniweb.swiftwaresolutions.services;
 import com.ueniweb.swiftwaresolutions.core.response.Response;
 import com.ueniweb.swiftwaresolutions.core.services.Page;
 import com.ueniweb.swiftwaresolutions.data.*;
+import com.ueniweb.swiftwaresolutions.data.DoctorScheduleStatusData;
 import com.ueniweb.swiftwaresolutions.domain.AncDetailsSheet;
 import com.ueniweb.swiftwaresolutions.domain.NeonateCaseSheet;
 import org.springframework.http.ResponseEntity;
@@ -154,5 +155,11 @@ public interface ClinicalInfoReadPlatformService {
     String fetchGeneralInstructionByPrescId(Long prescId);
 
     List<DoctorTransferData> fetchDoctorTransfer(Long vstId);
+
+    List<DocPatientListData> fetchDocPatientList(Long toDoc);
+
+    List<DocPatientListData> fetchDocPatientListByDate(Long toDoc, String date);
+
+    DoctorScheduleStatusData fetchDocStatus(Long doctorId);
 
 }

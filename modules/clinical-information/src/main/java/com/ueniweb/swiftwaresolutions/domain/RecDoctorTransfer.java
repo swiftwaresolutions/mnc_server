@@ -63,6 +63,10 @@ public class RecDoctorTransfer {
     @Column(name = "next_review")
     private String nextReview;
 
+    @Column(name = "doctor_token")
+    private int doctorToken;
+
+    @Column(name = "is_doctor_viewing")
+    private int isDoctorViewing;
 
 }
-

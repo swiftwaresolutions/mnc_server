@@ -3,6 +3,7 @@ package com.ueniweb.swiftwaresolutions.services;
 import com.ueniweb.swiftwaresolutions.core.response.Response;
 import com.ueniweb.swiftwaresolutions.core.services.PaginationHelper;
 import com.ueniweb.swiftwaresolutions.data.*;
+import com.ueniweb.swiftwaresolutions.data.DoctorScheduleStatusData;
 import com.ueniweb.swiftwaresolutions.domain.InvImgUpload;
 import com.ueniweb.swiftwaresolutions.repository.ImgInvRepository;
 import com.ueniweb.swiftwaresolutions.repository.PrescriptionRepository;
@@ -1179,5 +1180,66 @@ public class ClinicalInfoReadPlatformServiceImpl implements ClinicalInfoReadPlat
         System.out.println("det " + qry);
         log.debug("END of fetching Doctor Transfer");
         return this.jdbcTemplate.query(qry, doctorTransferRowMapper);
+    }
+
+    @Override
+    public List<DocPatientListData> fetchDocPatientList(Long toDoc) {
+        log.debug("START of fetchDocPatientList() toDoc{} ", toDoc);
+        final DocPatientListRowMapper docPatientListRowMapper = new DocPatientListRowMapper();
+        String whereCondition = " WHERE c.to_doc = ? AND c.is_cancelled = 0 AND DATE(b.date) = CURDATE()";
+        String qry = "SELECT " + docPatientListRowMapper.schema() + whereCondition;
+        log.debug("END of fetchDocPatientList()");
+        return this.jdbcTemplate.query(qry, docPatientListRowMapper, toDoc);
+    }
+
+    @Override
+    public List<DocPatientListData> fetchDocPatientListByDate(Long toDoc, String date) {
+        log.debug("START of fetchDocPatientListByDate() toDoc{} date{} ", toDoc, date);
+        final DocPatientListRowMapper docPatientListRowMapper = new DocPatientListRowMapper();
+        String qry = "SELECT a.display_number AS displayNumber, " +
+                "a.name AS patientName, " +
+                "c.ent_dateTime AS entDateTime, " +
+                "td.name AS doctorName, " +
+                "fd.name AS referDoctor, " +
+                "d.phone AS contactNumber, " +
+                "TIMESTAMPDIFF(YEAR, d.dob, CURDATE()) AS age, " +
+                "CASE c.is_completed " +
+                    "WHEN 0 THEN 'Pending' " +
+                    "WHEN 1 THEN 'In Progress' " +
+                    "WHEN 2 THEN 'Completed' " +
+                    "ELSE 'Unknown' END AS status " +
+                "FROM rec_doctor_transfer c " +
+                "INNER JOIN rec_patient_opvisits b ON c.vst_id = b.id " +
+                "INNER JOIN rec_patient a ON b.pat_id = a.id " +
+                "INNER JOIN rec_config_msc_consultants td ON c.to_doc = td.id " +
+                "LEFT JOIN rec_config_msc_consultants fd ON c.from_doc = fd.id " +
+                "INNER JOIN rec_patient_details d ON a.id = d.pat_id " +
+                "WHERE c.to_doc = ? AND c.is_cancelled = 0 AND DATE(b.date) = ?";
+        log.debug("END of fetchDocPatientListByDate()");
+        return this.jdbcTemplate.query(qry, docPatientListRowMapper, toDoc, date);
+    }
+
+    @Override
+    public DoctorScheduleStatusData fetchDocStatus(Long doctorId) {
+        log.debug("START of fetchDocStatus() doctorId{}", doctorId);
+        String qry = "SELECT id, doctor_id AS doctorId, status, attendance_date AS attendanceDate " +
+                     "FROM doctor_daily_schedule " +
+                     "WHERE doctor_id = ? " +
+                     "AND DATE(attendance_date) = CURDATE() " +
+                     "ORDER BY id DESC LIMIT 1";
+        try {
+            DoctorScheduleStatusData result = this.jdbcTemplate.queryForObject(qry, (rs, rowNum) ->
+                    DoctorScheduleStatusData.newInstance(
+                            rs.getLong("id"),
+                            rs.getLong("doctorId"),
+                            rs.getString("status"),
+                            rs.getString("attendanceDate")
+                    ), doctorId);
+            log.debug("END of fetchDocStatus() doctorId{}", doctorId);
+            return result;
+        } catch (EmptyResultDataAccessException e) {
+            throw new com.ueniweb.swiftwaresolutions.infrastructure.exceptions.NoRecordFoundException(
+                    "PLEASE CHECK IN");
+        }
     }
 }

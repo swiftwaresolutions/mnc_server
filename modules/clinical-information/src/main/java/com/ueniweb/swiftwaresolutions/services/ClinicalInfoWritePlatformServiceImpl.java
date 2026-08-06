@@ -41,6 +41,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.Map;
 
 import static org.springframework.data.jpa.domain.AbstractPersistable_.id;
 
@@ -2061,6 +2062,8 @@ public class ClinicalInfoWritePlatformServiceImpl implements ClinicalInfoWritePl
            CreateInvestigationOrderRequest investigationOrderRequest =
                    request.getInvestigationOrders().get(0);
 
+           int currentMaxToken = recDoctorTransferRepository.findMaxDoctorTokenByToDoc(request.getToDoc());
+
            RecDoctorTransfer transfer = new RecDoctorTransfer();
            transfer.setPatId(investigationOrderRequest.getPatId());
            transfer.setVstId(investigationOrderRequest.getVstId());
@@ -2072,6 +2075,7 @@ public class ClinicalInfoWritePlatformServiceImpl implements ClinicalInfoWritePl
            transfer.setSystemIp(getLocalIpAddress());
            transfer.setIsCompleted(0);
            transfer.setNextReview("0000-00-00");
+           transfer.setDoctorToken(currentMaxToken + 1);
 
            recDoctorTransferRepository.save(transfer);
            investigationOrderRequest.setUid(userId);
@@ -2218,6 +2222,95 @@ public class ClinicalInfoWritePlatformServiceImpl implements ClinicalInfoWritePl
         }
     }
 
+    @Transactional
+    @Override
+    public Response updateDocStatus(Long doctorId, String status) {
+        try {
+            // ── STEP 1: log incoming params ──────────────────────────────────
+            log.info("[DEBUG] updateDocStatus CALLED  doctorId={} status='{}'", doctorId, status);
+
+            // ── STEP 2: find today's record ───────────────────────────────────
+            String checkQry = "SELECT id, attendance_date, status, scheduled_end_time " +
+                              "FROM doctor_daily_schedule " +
+                              "WHERE doctor_id = ? " +
+                              "AND DATE(attendance_date) = CURDATE() " +
+                              "ORDER BY id DESC LIMIT 1";
+            log.info("[DEBUG] SELECT query: {}", checkQry);
+            List<Map<String, Object>> records = this.jdbcTemplate.queryForList(checkQry, doctorId);
+
+            log.info("[DEBUG] SELECT returned {} row(s)", records.size());
+            if (records.isEmpty()) {
+                log.warn("[DEBUG] No record found for doctorId={} today — throwing PLEASE CHECK IN", doctorId);
+                throw new NoRecordFoundException("PLEASE CHECK IN");
+            }
+
+            Map<String, Object> row = records.get(0);
+            Long recordId = ((Number) row.get("id")).longValue();
+            log.info("[DEBUG] Record found: id={} attendance_date={} current_status={} scheduled_end_time={}",
+                    recordId, row.get("attendance_date"), row.get("status"), row.get("scheduled_end_time"));
+
+            // ── STEP 3: run update ─────────────────────────────────────────────
+            int rowsAffected;
+            if ("COMPLETED".equalsIgnoreCase(status) || "COMPLETE".equalsIgnoreCase(status)) {
+                log.info("[DEBUG] Status is COMPLETED — will set scheduled_end_time = CURTIME()");
+                String updateQry = "UPDATE doctor_daily_schedule " +
+                                   "SET status = ?, scheduled_end_time = CURTIME() " +
+                                   "WHERE id = ?";
+                log.info("[DEBUG] UPDATE query: {}  params=[status='{}', id={}]", updateQry, status, recordId);
+                rowsAffected = this.jdbcTemplate.update(updateQry, status, recordId);
+            } else {
+                log.info("[DEBUG] Status is '{}' — updating status only", status);
+                String updateQry = "UPDATE doctor_daily_schedule SET status = ? WHERE id = ?";
+                log.info("[DEBUG] UPDATE query: {}  params=[status='{}', id={}]", updateQry, status, recordId);
+                rowsAffected = this.jdbcTemplate.update(updateQry, status, recordId);
+            }
+            log.info("[DEBUG] UPDATE affected {} row(s)", rowsAffected);
+
+            // ── STEP 4: verify — re-read the row to confirm what was saved ─────
+            String verifyQry = "SELECT id, status, scheduled_end_time FROM doctor_daily_schedule WHERE id = ?";
+            List<Map<String, Object>> verify = this.jdbcTemplate.queryForList(verifyQry, recordId);
+            if (!verify.isEmpty()) {
+                log.info("[DEBUG] VERIFY after update: id={} status={} scheduled_end_time={}",
+                        verify.get(0).get("id"),
+                        verify.get(0).get("status"),
+                        verify.get(0).get("scheduled_end_time"));
+            }
+
+            log.info("[DEBUG] updateDocStatus DONE  doctorId={} status='{}' recordId={}", doctorId, status, recordId);
+            return new Response(recordId);
+
+        } catch (NoRecordFoundException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("[DEBUG] EXCEPTION in updateDocStatus doctorId={} status='{}' error={}", doctorId, status, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Response updateDoctorViewing(final Long patId, final Long vstId, final Long toDoc) {
+        try {
+            log.debug("START updateDoctorViewing patId={} vstId={} toDoc={}", patId, vstId, toDoc);
+
+            recDoctorTransferRepository.resetDoctorViewing(toDoc);
 
 
+            int updated = recDoctorTransferRepository.setDoctorViewing(patId, vstId, toDoc);
+
+            if (updated == 0) {
+                throw new NotFoundException(
+                        "No active transfer record found for patId=" + patId +
+                        ", vstId=" + vstId + ", toDoc=" + toDoc);
+            }
+
+            log.debug("END updateDoctorViewing patId={} vstId={} toDoc={}", patId, vstId, toDoc);
+            return new Response(patId);
+        } catch (NotFoundException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error in updateDoctorViewing patId={} vstId={} toDoc={}: {}", patId, vstId, toDoc, e.getMessage());
+            throw new RuntimeException(e);
+        }
+    }
 }
