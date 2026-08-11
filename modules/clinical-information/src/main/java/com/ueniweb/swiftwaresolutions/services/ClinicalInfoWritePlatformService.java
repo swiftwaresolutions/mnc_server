@@ -166,6 +166,8 @@ public interface ClinicalInfoWritePlatformService {
 
     Response updateDocStatus(final Long doctorId, final String status);
 
+    Response checkInDoctor(final Long doctorId);
+
     Response completeDoctorTransfer(final Long transferId, final String reviewDate, final Long docId);
 
     Response reOpenDoctorTransfer(final Long transferId, final Long docId);

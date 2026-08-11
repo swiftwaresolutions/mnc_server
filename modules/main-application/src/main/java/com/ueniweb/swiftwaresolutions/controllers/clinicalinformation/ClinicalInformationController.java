@@ -1071,6 +1071,13 @@ public class ClinicalInformationController {
         return this.clinicalInfoWritePlatformService.updateDocStatus(doctorId, status);
     }
 
+    @RequestMapping(value = "/checkInDoctor/{doctor_id}",
+                    method = {RequestMethod.PUT, RequestMethod.POST})
+    public Response checkInDoctor(@PathVariable("doctor_id") Long doctorId) {
+        log.debug("REST request to checkInDoctor doctorId {}", doctorId);
+        return this.clinicalInfoWritePlatformService.checkInDoctor(doctorId);
+    }
+
     @PutMapping("/updateDoctorViewing/{patId}/{vstId}")
     public Response updateDoctorViewing(@PathVariable("patId") Long patId,
                                         @PathVariable("vstId") Long vstId) {

@@ -2226,7 +2226,6 @@ public class ClinicalInfoWritePlatformServiceImpl implements ClinicalInfoWritePl
     @Override
     public Response updateDocStatus(Long doctorId, String status) {
         try {
-            // ── STEP 1: log incoming params ──────────────────────────────────
             log.info("[DEBUG] updateDocStatus CALLED  doctorId={} status='{}'", doctorId, status);
 
             // ── STEP 2: find today's record ───────────────────────────────────
@@ -2283,6 +2282,73 @@ public class ClinicalInfoWritePlatformServiceImpl implements ClinicalInfoWritePl
             throw e;
         } catch (Exception e) {
             log.error("[DEBUG] EXCEPTION in updateDocStatus doctorId={} status='{}' error={}", doctorId, status, e.getMessage(), e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Transactional
+    @Override
+    public Response checkInDoctor(Long doctorId) {
+        try {
+            log.info("[DEBUG] checkInDoctor CALLED doctorId={}", doctorId);
+
+            // ── STEP 1: if today's record already exists, do nothing ───────────
+            String checkQry = "SELECT id FROM doctor_daily_schedule " +
+                              "WHERE doctor_id = ? " +
+                              "AND DATE(attendance_date) = CURDATE() " +
+                              "ORDER BY id DESC LIMIT 1";
+            List<Map<String, Object>> existing = this.jdbcTemplate.queryForList(checkQry, doctorId);
+            if (!existing.isEmpty()) {
+                Long recordId = ((Number) existing.get(0).get("id")).longValue();
+                log.info("[DEBUG] checkInDoctor doctorId={} already checked in, recordId={}", doctorId, recordId);
+                return new Response(recordId);
+            }
+
+            // ── STEP 2: pull today's schedule details from doctor_schedule_timing ──
+            int dayOfWeek = LocalDate.now().getDayOfWeek().getValue(); // 1=MONDAY ... 7=SUNDAY
+            String timingQry = "SELECT department_id, room_id, start_time, end_time, max_tokens " +
+                               "FROM doctor_schedule_timing " +
+                               "WHERE doctor_id = ? AND day_of_week = ? AND is_active = 1 " +
+                               "ORDER BY id DESC LIMIT 1";
+            List<Map<String, Object>> timing = this.jdbcTemplate.queryForList(timingQry, doctorId, dayOfWeek);
+
+            if (timing.isEmpty()) {
+                log.warn("[DEBUG] No timing found for doctorId={} dayOfWeek={} — falling back to latest active timing", doctorId, dayOfWeek);
+                String fallbackQry = "SELECT department_id, room_id, start_time, end_time, max_tokens " +
+                                     "FROM doctor_schedule_timing " +
+                                     "WHERE doctor_id = ? AND is_active = 1 " +
+                                     "ORDER BY id DESC LIMIT 1";
+                timing = this.jdbcTemplate.queryForList(fallbackQry, doctorId);
+            }
+
+            if (timing.isEmpty()) {
+                log.warn("[DEBUG] No schedule timing configured for doctorId={}", doctorId);
+                throw new NoRecordFoundException("No schedule timing configured for this doctor");
+            }
+
+            Map<String, Object> timingRow = timing.get(0);
+            Long departmentId = ((Number) timingRow.get("department_id")).longValue();
+            Object roomId = timingRow.get("room_id");
+            Object endTime = timingRow.get("end_time");
+            int maxTokens = timingRow.get("max_tokens") != null ? ((Number) timingRow.get("max_tokens")).intValue() : 0;
+
+            // ── STEP 3: insert new record — scheduled_start_time/actual_check_in = server time,
+            //            actual_check_out = doctor_schedule_timing.end_time. scheduled_end_time is NOT NULL
+            //            with no DB default, so it's stamped with a placeholder ('00:00:00') here ──
+            String insertQry = "INSERT INTO doctor_daily_schedule " +
+                               "(doctor_id, department_id, room_id, attendance_date, scheduled_start_time, scheduled_end_time, " +
+                               "actual_check_in, actual_check_out, max_tokens, status, is_valid, created_at, updated_at) " +
+                               "VALUES (?, ?, ?, CURDATE(), CURTIME(), '00:00:00', CURTIME(), ?, ?, 'AVAILABLE', 1, NOW(), NOW())";
+            this.jdbcTemplate.update(insertQry, doctorId, departmentId, roomId, endTime, maxTokens);
+
+            Long newId = this.jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
+            log.info("[DEBUG] checkInDoctor DONE doctorId={} created new recordId={}", doctorId, newId);
+            return new Response(newId);
+
+        } catch (NoRecordFoundException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("[DEBUG] EXCEPTION in checkInDoctor doctorId={} error={}", doctorId, e.getMessage(), e);
             throw new RuntimeException(e);
         }
     }
