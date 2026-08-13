@@ -2228,6 +2228,11 @@ public class ClinicalInfoWritePlatformServiceImpl implements ClinicalInfoWritePl
         try {
             log.info("[DEBUG] updateDocStatus CALLED  doctorId={} status='{}'", doctorId, status);
 
+            if (!isPermanentConsultant(doctorId)) {
+                log.info("[DEBUG] updateDocStatus skipped for temporary doctorId={}", doctorId);
+                return Response.empty();
+            }
+
             // ── STEP 2: find today's record ───────────────────────────────────
             String checkQry = "SELECT id, attendance_date, status, scheduled_end_time " +
                               "FROM doctor_daily_schedule " +
@@ -2292,6 +2297,11 @@ public class ClinicalInfoWritePlatformServiceImpl implements ClinicalInfoWritePl
         try {
             log.info("[DEBUG] checkInDoctor CALLED doctorId={}", doctorId);
 
+            if (!isPermanentConsultant(doctorId)) {
+                log.info("[DEBUG] checkInDoctor skipped for temporary doctorId={}", doctorId);
+                return Response.empty();
+            }
+
             // ── STEP 1: if today's record already exists, do nothing ───────────
             String checkQry = "SELECT id FROM doctor_daily_schedule " +
                               "WHERE doctor_id = ? " +
@@ -2351,6 +2361,15 @@ public class ClinicalInfoWritePlatformServiceImpl implements ClinicalInfoWritePl
             log.error("[DEBUG] EXCEPTION in checkInDoctor doctorId={} error={}", doctorId, e.getMessage(), e);
             throw new RuntimeException(e);
         }
+    }
+
+    private boolean isPermanentConsultant(Long doctorId) {
+        String consultantQry = "SELECT is_cons FROM rec_config_msc_consultants WHERE id = ?";
+        List<Map<String, Object>> consultant = this.jdbcTemplate.queryForList(consultantQry, doctorId);
+        if (consultant.isEmpty()) {
+            throw new NoRecordFoundException("Doctor not found");
+        }
+        return ((Number) consultant.get(0).get("is_cons")).intValue() == 1;
     }
 
     @Override

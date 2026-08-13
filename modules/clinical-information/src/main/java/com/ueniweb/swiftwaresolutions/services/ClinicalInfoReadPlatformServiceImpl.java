@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.time.LocalDate;
 import java.util.*;
 
 
@@ -1222,6 +1223,17 @@ public class ClinicalInfoReadPlatformServiceImpl implements ClinicalInfoReadPlat
     @Override
     public DoctorScheduleStatusData fetchDocStatus(Long doctorId) {
         log.debug("START of fetchDocStatus() doctorId{}", doctorId);
+
+        String consultantQry = "SELECT is_cons FROM rec_config_msc_consultants WHERE id = ?";
+        List<Map<String, Object>> consultant = this.jdbcTemplate.queryForList(consultantQry, doctorId);
+        if (consultant.isEmpty()) {
+            throw new com.ueniweb.swiftwaresolutions.infrastructure.exceptions.NoRecordFoundException("Doctor not found");
+        }
+        if (((Number) consultant.get(0).get("is_cons")).intValue() != 1) {
+            log.debug("fetchDocStatus skipped for temporary doctorId={}", doctorId);
+            return DoctorScheduleStatusData.newInstance(null, doctorId, "AVAILABLE", LocalDate.now().toString());
+        }
+
         String qry = "SELECT id, doctor_id AS doctorId, status, attendance_date AS attendanceDate " +
                      "FROM doctor_daily_schedule " +
                      "WHERE doctor_id = ? " +
