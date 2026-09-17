@@ -68,6 +68,20 @@ public interface RecDoctorTransferRepository
                 """, nativeQuery = true)
     int resetDoctorViewing(@Param("toDoc") Long toDoc);
 
+    @Query(value = """
+                    SELECT COUNT(*)
+                    FROM rec_doctor_transfer
+                    WHERE pat_id = :patId
+                      AND vst_id = :vstId
+                      AND to_doc = :toDoc
+                      AND DATE(ent_dateTime) = CURDATE()
+                      AND is_cancelled = 0
+                      AND is_completed = 0
+                """, nativeQuery = true)
+    int countPendingFirstView(@Param("patId") Long patId,
+                              @Param("vstId") Long vstId,
+                              @Param("toDoc") Long toDoc);
+
     @Modifying(clearAutomatically = true)
     @Transactional
     @Query(value = """

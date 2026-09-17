@@ -2347,8 +2347,8 @@ public class ClinicalInfoWritePlatformServiceImpl implements ClinicalInfoWritePl
             //            with no DB default, so it's stamped with a placeholder ('00:00:00') here ──
             String insertQry = "INSERT INTO doctor_daily_schedule " +
                                "(doctor_id, department_id, room_id, attendance_date, scheduled_start_time, scheduled_end_time, " +
-                               "actual_check_in, actual_check_out, max_tokens, status, is_valid, created_at, updated_at) " +
-                               "VALUES (?, ?, ?, CURDATE(), CURTIME(), '00:00:00', CURTIME(), ?, ?, 'AVAILABLE', 1, NOW(), NOW())";
+                               "actual_check_in, actual_check_out, max_tokens, status, is_valid, created_at, updated_at, pat_tot_count) " +
+                               "VALUES (?, ?, ?, CURDATE(), CURTIME(), '00:00:00', CURTIME(), ?, ?, 'AVAILABLE', 1, NOW(), NOW(), 0)";
             this.jdbcTemplate.update(insertQry, doctorId, departmentId, roomId, endTime, maxTokens);
 
             Long newId = this.jdbcTemplate.queryForObject("SELECT LAST_INSERT_ID()", Long.class);
@@ -2378,8 +2378,9 @@ public class ClinicalInfoWritePlatformServiceImpl implements ClinicalInfoWritePl
         try {
             log.debug("START updateDoctorViewing patId={} vstId={} toDoc={}", patId, vstId, toDoc);
 
-            recDoctorTransferRepository.resetDoctorViewing(toDoc);
+            int pendingFirstView = recDoctorTransferRepository.countPendingFirstView(patId, vstId, toDoc);
 
+            recDoctorTransferRepository.resetDoctorViewing(toDoc);
 
             int updated = recDoctorTransferRepository.setDoctorViewing(patId, vstId, toDoc);
 
@@ -2389,6 +2390,10 @@ public class ClinicalInfoWritePlatformServiceImpl implements ClinicalInfoWritePl
                         ", vstId=" + vstId + ", toDoc=" + toDoc);
             }
 
+            if (pendingFirstView > 0) {
+                incrementDoctorPatTotCount(toDoc);
+            }
+
             log.debug("END updateDoctorViewing patId={} vstId={} toDoc={}", patId, vstId, toDoc);
             return new Response(patId);
         } catch (NotFoundException e) {
@@ -2396,6 +2401,20 @@ public class ClinicalInfoWritePlatformServiceImpl implements ClinicalInfoWritePl
         } catch (Exception e) {
             log.error("Error in updateDoctorViewing patId={} vstId={} toDoc={}: {}", patId, vstId, toDoc, e.getMessage());
             throw new RuntimeException(e);
+        }
+    }
+
+    private void incrementDoctorPatTotCount(Long toDoc) {
+        String updateQry = "UPDATE doctor_daily_schedule " +
+                "SET pat_tot_count = COALESCE(pat_tot_count, 0) + 1, updated_at = NOW() " +
+                "WHERE doctor_id = ? " +
+                "AND DATE(attendance_date) = CURDATE() " +
+                "ORDER BY id DESC LIMIT 1";
+        int rowsAffected = this.jdbcTemplate.update(updateQry, toDoc);
+        if (rowsAffected == 0) {
+            log.warn("No doctor_daily_schedule row for toDoc={} today — pat_tot_count not incremented", toDoc);
+        } else {
+            log.debug("Incremented pat_tot_count for toDoc={}", toDoc);
         }
     }
 }
