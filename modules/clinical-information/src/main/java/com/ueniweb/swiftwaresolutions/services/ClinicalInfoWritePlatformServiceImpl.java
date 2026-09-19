@@ -2378,6 +2378,13 @@ public class ClinicalInfoWritePlatformServiceImpl implements ClinicalInfoWritePl
         try {
             log.debug("START updateDoctorViewing patId={} vstId={} toDoc={}", patId, vstId, toDoc);
 
+            // Doctor id 1 is a super/admin doctor: can open any patient, but must not
+            // mark rec_doctor_transfer as currently viewing.
+            if (toDoc != null && toDoc == 1L) {
+                log.debug("SKIP updateDoctorViewing for toDoc=1");
+                return new Response(patId);
+            }
+
             int pendingFirstView = recDoctorTransferRepository.countPendingFirstView(patId, vstId, toDoc);
 
             recDoctorTransferRepository.resetDoctorViewing(toDoc);
